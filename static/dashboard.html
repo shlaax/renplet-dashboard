@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RenPlet Medarbejder Dashboard</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', sans-serif; background: #1f1f2e; color: #f1f1f1; }
+    .login-box { max-width: 400px; margin: 100px auto; background: #2f314a; padding: 2rem; border-radius: 8px; }
+    .login-box h2 { margin: 0 0 1rem; color: #1db954; text-align: center; }
+    .login-box input { width: 100%; padding: 0.75rem; margin: 0.5rem 0; border: none; border-radius: 4px; background: #3b3e5a; color: #f1f1f1; }
+    .login-box button { width: 100%; padding: 0.75rem; margin-top: 1rem; border: none; border-radius: 4px; background: #1db954; color: white; font-weight: 600; cursor: pointer; }
+    .login-box .error { color: #dc3545; text-align: center; margin-top: 0.5rem; }
+    #dashboard { display: none; }
+    header { background: #27293d; padding: 1rem 2rem; }
+    header h1 { margin: 0; font-size: 1.5rem; }
+    .container { display: flex; flex-wrap: wrap; gap: 1rem; padding: 2rem; }
+    .panel { background: #2f314a; border-radius: 8px; padding: 1rem; flex: 1 1 calc(33.333% - 1rem); box-sizing: border-box; }
+    .panel h2 { margin: 0 0 1rem; font-size: 1.2rem; }
+    .tabs { display: flex; margin-bottom: 1rem; }
+    .tabs .tab { flex: 1; padding: 0.5rem; text-align: center; cursor: pointer; background: #3b3e5a; border-radius: 4px; margin-right: 0.5rem; }
+    .tabs .tab:last-child { margin-right: 0; }
+    .tabs .tab.active { background: #1db954; }
+    .content { margin-top: 1rem; }
+    .content section { display: none; }
+    .content section.active { display: block; }
+    input, button, select, textarea { width: 100%; padding: 0.75rem; margin: 0.5rem 0; border: none; border-radius: 4px; box-sizing: border-box; background: #3b3e5a; color: #f1f1f1; }
+    button { background: #1db954; cursor: pointer; font-weight: 600; }
+    button:hover { background: #17a245; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.5rem; border: 1px solid #444; }
+    th { background: #3b3e5a; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    ul li { padding: 0.5rem; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
+    ul li button { padding: 0.25rem 0.5rem; font-size: 0.9rem; }
+    .log-container { margin-top: 1rem; border-top: 1px solid #444; padding-top: 1rem; }
+  </style>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div class="login-box" id="loginBox">
+    <h2>🔐 Medarbejder Login</h2>
+    <input type="text" id="loginNavn" placeholder="Navn">
+    <input type="password" id="loginKode" placeholder="Kodeord">
+    <button id="loginBtn">Log ind</button>
+    <p id="loginError" class="error"></p>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard">
+    <header>
+      <h1>RenPlet Medarbejderdashboard</h1>
+    </header>
+    <div class="container">
+
+      <!-- Dine opgaver -->
+      <div class="panel" id="panel-opgaver">
+        <h2>Dine opgaver</h2>
+        <div class="tabs">
+          <div class="tab" data-target="aktive">Aktive</div>
+          <div class="tab" data-target="faerdige">Færdige</div>
+        </div>
+        <div class="content">
+          <section id="aktive"></section>
+          <section id="faerdige"></section>
+        </div>
+      </div>
+
+      <!-- Dine timer & Løn -->
+      <div class="panel" id="panel-timer">
+        <h2>Dine timer & Løn</h2>
+        <div class="tabs">
+          <div class="tab" data-target="mineTimer">Timer</div>
+          <div class="tab" data-target="lon">Løn</div>
+        </div>
+        <div class="content">
+          <section id="mineTimer"></section>
+          <section id="lon"></section>
+        </div>
+        <div class="log-container">
+          <h2>Log timer</h2>
+          <input type="text" id="logOpgave" placeholder="Opgave navn">
+          <input type="number" id="logTimer" placeholder="Antal timer">
+          <button onclick="sendTimer()">Send timer</button>
+        </div>
+      </div>
+
+      <!-- Planlagte opgaver -->
+      <div class="panel" id="panel-plan">
+        <h2>Planlagte opgaver</h2>
+        <table>
+          <thead>
+            <tr><th>Opgave</th><th>Dato</th><th>Tid</th><th>Varevogn</th><th>Status</th><th>Notat</th></tr>
+          </thead>
+          <tbody id="planListe"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:8000';
+    let users = [];
+    let currentUser = '';
+
+    // Hent brugere for login
+    fetch(`${API}/brugere`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(data => users = Array.isArray(data) ? data : [])
+      .catch(err => console.error('Kunne ikke hente brugere:', err));
+
+    // Login knap
+    document.getElementById('loginBtn').onclick = () => {
+      const navn = document.getElementById('loginNavn').value.trim();
+      const kode = document.getElementById('loginKode').value;
+      const user = users.find(u => u.navn === navn && u.kodeord === kode && u.rolle === 'medarbejder');
+      if (user) {
+        currentUser = navn;
+        document.getElementById('loginBox').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        initDashboard();
+      } else {
+        document.getElementById('loginError').textContent = 'Forkert navn eller kodeord.';
+      }
+    };
+
+    function initDashboard() {
+      // Setup tabs
+      document.querySelectorAll('.tabs').forEach(tabGroup => {
+        const tabs = tabGroup.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+          tab.onclick = () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const content = tabGroup.nextElementSibling;
+            content.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+            content.querySelector('#' + tab.dataset.target).classList.add('active');
+            // Load data
+            if (tab.dataset.target === 'aktive' || tab.dataset.target === 'faerdige') {
+              loadOpgaverFromPlan(tab.dataset.target);
+            } else if (tab.dataset.target === 'mineTimer' || tab.dataset.target === 'lon') {
+              loadTimer(tab.dataset.target);
+            }
+          };
+        });
+        tabs[0].click();
+      });
+      loadPlanlagte();
+    }
+
+    // Opgaver nu fra plan
+    function loadOpgaverFromPlan(status) {
+      const el = document.getElementById(status);
+      fetch(`${API}/plan`)
+        .then(r => r.json())
+        .then(data => {
+          // Map plan status to dine opgaver
+          const filtered = data.filter(o =>
+            o.medarbejder.toLowerCase() === currentUser.toLowerCase() &&
+            ((status === 'aktive' && o.status.toLowerCase() === 'i gang') ||
+             (status === 'faerdige' && o.status.toLowerCase() === 'afsluttet'))
+          );
+          if (filtered.length) {
+            el.innerHTML = '<ul>' + filtered.map(o => {
+              if (status === 'aktive') {
+                return `<li>${o.opgave_navn} <button onclick="afslutPlan('${o.opgave_navn}')">Afslut</button></li>`;
+              } else {
+                return `<li>${o.opgave_navn}</li>`;
+              }
+            }).join('') + '</ul>';
+          } else {
+            el.innerHTML = '<p>Ingen opgaver</p>';
+          }
+        });
+    }
+
+    function afslutPlan(opgave) {
+      fetch(`${API}/plan/opdater`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({opgave_navn: opgave, medarbejder: currentUser, status: 'afsluttet'})
+      }).then(() => {
+        loadOpgaverFromPlan('aktive');
+        loadOpgaverFromPlan('faerdige');
+        loadPlanlagte();
+      });
+    }
+
+    function sendTimer() {
+      const opg = document.getElementById('logOpgave').value;
+      const t = parseFloat(document.getElementById('logTimer').value) || 0;
+      fetch(`${API}/send`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({from_agent:'TidsAgent',to_agent:'TidsAgent',content:{medarbejder:currentUser,opgave:opg,timer:t}})
+      });
+    }
+
+    function loadTimer(type) {
+      const el = document.getElementById(type);
+      if (type === 'mineTimer') {
+        fetch(`${API}/timer/${encodeURIComponent(currentUser)}`)
+          .then(r => r.json())
+          .then(data => el.innerHTML = data.length
+            ? '<ul>' + data.map(x => `<li>${x.opgave}: ${x.timer} t</li>`).join('') + '</ul>'
+            : '<p>Ingen timer</p>'
+          );
+      } else {
+        fetch(`${API}/løn/${encodeURIComponent(currentUser)}`)
+          .then(r => r.json())
+          .then(d => el.innerHTML = `<p>💰 Samlet løn: ${d.samlet_løn} DKK</p>`);
+      }
+    }
+
+    function loadPlanlagte() {
+      fetch(`${API}/plan`)
+        .then(r => r.json())
+        .then(data => {
+          const rows = data.filter(o => o.medarbejder.toLowerCase() === currentUser.toLowerCase())
+            .map(o => `<tr><td>${o.opgave_navn}</td><td>${o.dato}</td><td>${o.klokkeslæt}</td><td>${o.varevogn}</td><td>${o.status}</td><td>${o.notat}</td></tr>`)
+            .join('');
+          document.getElementById('planListe').innerHTML = rows || '<tr><td colspan="6">Ingen planlagte opgaver</td></tr>';
+        });
+    }
+  </script>
+</body>
+</html>

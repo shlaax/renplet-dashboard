@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RenPlet Adminpanel</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      font-family: 'Inter', sans-serif;
+      background: #1f1f2e;
+      color: #f1f1f1;
+    }
+    /* SIDEBAR */
+    nav {
+      width: 200px;
+      background: #27293d;
+      padding-top: 1rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    nav a {
+      padding: 0.75rem 1rem;
+      color: #bbb;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    nav a.active, nav a:hover {
+      background: #1db954;
+      color: #fff;
+    }
+    /* MAIN */
+    main {
+      flex: 1;
+      overflow-y: auto;
+    }
+    header {
+      background: #27293d;
+      padding: 1rem 2rem;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    .panel {
+      margin: 1rem 2rem;
+      background: #2f314a;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .panel h2 {
+      margin-top: 0;
+      font-size: 1.2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+    }
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid #444;
+      text-align: left;
+    }
+    th {
+      background: #3b3e5a;
+    }
+    /* status-indikator */
+    .status-i-gang td { border-left: 4px solid #28a745; }
+    .status-afventer td { border-left: 4px solid #ffc107; }
+    .status-afsluttet td { border-left: 4px solid #dc3545; }
+    /* knap */
+    button {
+      padding: 0.5rem 1rem;
+      background: #1db954;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #17a245;
+    }
+    /* Skjulte paneler */
+    .panel.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a id="nav-brugere" class="active">👥 Brugere</a>
+    <a id="nav-opret">➕ Opret bruger</a>
+    <a id="nav-tildel">📋 Tildel opgave</a>
+    <a id="nav-plan">📆 Planlagte opgaver</a>
+    <a id="nav-ordre">📦 Ordrestyring</a>
+  </nav>
+  <main>
+    <header><h1>RenPlet Adminpanel</h1></header>
+
+    <!-- BRUGERE -->
+    <div id="panel-brugere" class="panel">
+      <h2>👥 Brugere</h2>
+      <table>
+        <thead><tr><th>Navn</th><th>Rolle</th><th>Kodeord</th><th>Handling</th></tr></thead>
+        <tbody id="brugereListe"></tbody>
+      </table>
+    </div>
+
+    <!-- OPRET BRUGER -->
+    <div id="panel-opret" class="panel hidden">
+      <h2>➕ Opret ny bruger</h2>
+      <input id="nyNavn" placeholder="Navn"/>
+      <input id="nyKode" placeholder="Kodeord"/>
+      <select id="nyRolle">
+        <option value="medarbejder">medarbejder</option>
+        <option value="admin">admin</option>
+      </select>
+      <button onclick="opretBruger()">Opret bruger</button>
+    </div>
+
+    <!-- TILDEL OPGAVE -->
+    <div id="panel-tildel" class="panel hidden">
+      <h2>📋 Tildel opgave</h2>
+      <input id="planOpgave" placeholder="Opgave navn"/>
+      <input id="planDato" type="date"/>
+      <input id="planTid" type="time"/>
+      <input id="planVogn" placeholder="Varevogn"/>
+      <select id="planMedarbejder"></select>
+      <button onclick="tildelOpgave()">Tildel opgave</button>
+    </div>
+
+    <!-- PLANLAGTE OPGAVER -->
+    <div id="panel-plan" class="panel hidden">
+      <h2>📆 Planlagte opgaver</h2>
+      <table>
+        <thead><tr>
+          <th>Opgave</th><th>Medarbejder</th><th>Dato</th><th>Tid</th><th>Status</th><th>Notat</th><th>Handling</th>
+        </tr></thead>
+        <tbody id="planListe"></tbody>
+      </table>
+    </div>
+
+    <!-- ORDRESTYRING -->
+    <div id="panel-ordre" class="panel hidden">
+      <h2>📦 Ordrestyring</h2>
+      <table>
+        <thead><tr>
+          <th>Adresse</th><th>Kunde</th><th>Beløb</th><th>Dato udført</th>
+        </tr></thead>
+        <tbody id="ordreListe"></tbody>
+      </table>
+      <h2>➕ Ny ordre</h2>
+      <input id="ordreAdresse" placeholder="Adresse"/>
+      <input id="ordreKunde" placeholder="Kunde navn"/>
+      <select id="ordreType">
+        <option value="ve2">Ve-2</option>
+        <option value="own">Egne kunder</option>
+      </select>
+      <div style="display:flex; gap:0.5rem;">
+        <input id="ordreBelob" type="number" placeholder="Beløb" style="flex:1;"/>
+        <select id="ordreMomstype" style="flex:1;">
+          <option value="excl">Excl. moms</option>
+          <option value="incl">Incl. moms</option>
+        </select>
+      </div>
+      <input id="ordreDato" type="date"/>
+      <button onclick="opretOrdre()">Opret ordre</button>
+    </div>
+  </main>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    // NAVIGATION
+    const tabs = ['brugere','opret','tildel','plan','ordre'];
+    tabs.forEach(id => {
+      document.getElementById(`nav-${id}`)
+        .onclick = () => {
+          // mark nav
+          tabs.forEach(i=>document.getElementById('nav-'+i).classList.remove('active'));
+          document.getElementById('nav-'+id).classList.add('active');
+          // show panel
+          tabs.forEach(i=>document.getElementById('panel-'+i).classList.add('hidden'));
+          document.getElementById('panel-'+id).classList.remove('hidden');
+        };
+    });
+
+    // ====== BRUGER-FUNKTIONER ======
+    let brugere = [];
+    function hentBrugere(){
+      fetch(`${API}/brugere`)
+        .then(r=>r.json()).then(data=>{
+          brugere = data;
+          const tbody = document.getElementById('brugereListe');
+          tbody.innerHTML = data.map((u,i)=>
+            `<tr>
+              <td>${u.navn}</td>
+              <td>
+                <select id="rolle-${i}">
+                  <option value="medarbejder"${u.rolle==='medarbejder'?' selected':''}>medarbejder</option>
+                  <option value="admin"${u.rolle==='admin'?' selected':''}>admin</option>
+                </select>
+              </td>
+              <td><input id="kode-${i}" value="${u.kodeord}"/></td>
+              <td>
+                <button onclick="opdaterBruger('${u.navn}',${i})">💾</button>
+                <button onclick="sletBruger('${u.navn}')">🗑</button>
+              </td>
+            </tr>`
+          ).join('');
+        });
+    }
+    function opretBruger(){
+      const navn = document.getElementById('nyNavn').value;
+      const kode = document.getElementById('nyKode').value;
+      const rolle= document.getElementById('nyRolle').value;
+      fetch(`${API}/brugere`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({navn,kodeord:kode,rolle})
+      }).then(hentBrugere);
+    }
+    function opdaterBruger(navn,i){
+      const rolle= document.getElementById(`rolle-${i}`).value;
+      const kode = document.getElementById(`kode-${i}`).value;
+      fetch(`${API}/brugere`,{method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({navn,rolle,kodeord:kode})
+      }).then(hentBrugere);
+    }
+    function sletBruger(navn){
+      fetch(`${API}/brugere/${navn}`,{method:'DELETE'}).then(hentBrugere);
+    }
+
+    // ====== TILDEL OPGAVE ======
+    function hentMedarbejdere(){
+      const sel = document.getElementById('planMedarbejder');
+      sel.innerHTML = brugere.filter(u=>u.rolle==='medarbejder')
+        .map(u=>`<option>${u.navn}</option>`).join('');
+    }
+    function tildelOpgave(){
+      const opgav= document.getElementById('planOpgave').value;
+      const dato=  document.getElementById('planDato').value;
+      const tid=   document.getElementById('planTid').value;
+      const vogn=  document.getElementById('planVogn').value;
+      const med=   document.getElementById('planMedarbejder').value;
+      fetch(`${API}/plan`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({opgave_navn:opgav,medarbejder:med,dato,klokkeslæt:tid,varevogn:vogn})
+      }).then(loadPlanlagte);
+    }
+
+    // ====== PLANLAGTE ======
+    function loadPlanlagte(){
+      const tbody = document.getElementById('planListe');
+      fetch(`${API}/plan`).then(r=>r.json()).then(data=>{
+        tbody.innerHTML = data.map(o=>{
+          const cls = o.status.toLowerCase().replace(' ','-');
+          return `<tr class="status-${cls}">
+            <td>${o.opgave_navn}</td><td>${o.medarbejder}</td>
+            <td>${o.dato}</td><td>${o.klokkeslæt}</td>
+            <td>${o.status}</td><td>${o.notat||''}</td>
+            <td><button onclick="openEdit('${o.opgave_navn}','${o.medarbejder}')">✏️</button></td>
+          </tr>`;
+        }).join('');
+      });
+    }
+    function openEdit(opgav,med){
+      // eksisterende edit-popup...
+    }
+
+    // ====== ORDRESTYRING ======
+    function loadOrdrer(){
+      const tbody = document.getElementById('ordreListe');
+      fetch(`${API}/orders`).then(r=>r.json()).then(data=>{
+        tbody.innerHTML = data.map(o=>
+          `<tr>
+            <td>${o.adresse}</td><td>${o.kunde}</td>
+            <td>${o.belob}${o.momstype==='incl'?' inkl':' excl'}</td>
+            <td>${o.dato}</td>
+          </tr>`
+        ).join('');
+      });
+    }
+    function opretOrdre(){
+      const ord = {
+        adresse: document.getElementById('ordreAdresse').value,
+        kunde:   document.getElementById('ordreKunde').value,
+        type:    document.getElementById('ordreType').value,
+        belob:   parseFloat(document.getElementById('ordreBelob').value),
+        momstype:document.getElementById('ordreMomstype').value,
+        dato:    document.getElementById('ordreDato').value
+      };
+      fetch(`${API}/orders`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(ord)
+      }).then(loadOrdrer);
+    }
+
+    // INIT
+    hentBrugere();
+    setTimeout(hentMedarbejdere,200);
+    loadPlanlagte();
+    loadOrdrer();
+  </script>
+</body>
+</html>
+
