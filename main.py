@@ -1,3 +1,5 @@
+import os
+import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Literal
@@ -8,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# CORS (så dine web-clients kan tilgå API’et)
+# --- CORS middleware så web‐UI kan ramme API'et ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,24 +18,38 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Google Sheets‐opsætning
+# --- Google Sheets opsætning ---
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
-creds = Credentials.from_service_account_file(
-    "/etc/secrets/credentials.json",  # Secret File du har uploadet i Render
-    scopes=SCOPE
-)
+
+def load_credentials():
+    secret_path = "/etc/secrets/credentials.json"
+    # 1) Prøv Secret File først
+    if os.path.exists(secret_path):
+        print(f"[INFO] Loader credentials fra Secret File: {secret_path}")
+        return Credentials.from_service_account_file(secret_path, scopes=SCOPE)
+    # 2) Fallback: miljø‐variabel GOOGLE_CREDENTIALS
+    raw = os.getenv("GOOGLE_CREDENTIALS")
+    if raw:
+        print("[INFO] Loader credentials fra env GOOGLE_CREDENTIALS")
+        info = json.loads(raw)
+        # Ret evt. escaped newline-karakterer
+        if "private_key" in info:
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
+        return Credentials.from_service_account_info(info, scopes=SCOPE)
+    raise RuntimeError("Ingen Google credentials fundet (fil eller env var).")
+
+creds = load_credentials()
 client = gspread.authorize(creds)
 
 SPREADSHEET_ID = "1vxXhq155OQEC-4ZsfqFmPJG1V8K8azA6eGRkt7WBMyI"
 sheet = client.open_by_key(SPREADSHEET_ID)
 
-# Besked‐model til “send” endpoint
+# --- Agent‐model ---
 class Message(BaseModel):
     from_agent: Literal["TidsAgent", "OpgaveAgent", "LønAgent"]
     to_agent: Literal["TidsAgent", "OpgaveAgent", "LønAgent"]
     content: dict
 
-# Agent‐funktioner
 def opgave_agent(content):
     ws = sheet.worksheet("opgaver")
     ws.append_row([
@@ -51,7 +67,6 @@ def tids_agent(content):
         content.get("timer", 0),
         datetime.now().isoformat()
     ])
-    # Videre til LønAgent
     return {
         "from_agent": "TidsAgent",
         "to_agent": "LønAgent",
@@ -62,7 +77,7 @@ def tids_agent(content):
     }
 
 def lon_agent(content):
-    belob = content["timer"] * 150  # timesats
+    belob = content["timer"] * 150
     ws = sheet.worksheet("løn")
     ws.append_row([
         content.get("medarbejder", "Ukendt"),
@@ -72,7 +87,7 @@ def lon_agent(content):
     ])
     return {"lønbeløb": belob}
 
-# “send” endpoint: modtag beskeder internt mellem agenter
+# --- API endpoints ---
 @app.post("/send")
 async def send_message(message: Message):
     if message.to_agent == "OpgaveAgent":
@@ -84,7 +99,6 @@ async def send_message(message: Message):
         return lon_agent(message.content)
     return {"status": "ukendt agent"}
 
-# Hent alle opgaver for en medarbejder
 @app.get("/opgaver/{medarbejder}")
 def hent_opgaver(medarbejder: str):
     ws = sheet.worksheet("opgaver")
@@ -96,15 +110,12 @@ def hent_opgaver(medarbejder: str):
         if row[1].strip().lower() == medarbejder.strip().lower()
     ]
 
-# Marker opgave som afsluttet
 @app.post("/opgaver/afslut")
 def afslut_opgave(data: dict):
     medarbejder = data.get("medarbejder", "").strip().lower()
     opgavenavn = data.get("opgave_navn", "").strip().lower()
-
     ws = sheet.worksheet("opgaver")
     rows = ws.get_all_values()
-
     for i, row in enumerate(rows[1:], start=2):
         navn = row[0].strip().lower()
         person = row[1].strip().lower()
@@ -113,7 +124,6 @@ def afslut_opgave(data: dict):
             return {"status": "opgave opdateret", "række": i}
     return {"status": "opgave ikke fundet"}
 
-# Hent timelog for en medarbejder
 @app.get("/timer/{medarbejder}")
 def hent_timer(medarbejder: str):
     ws = sheet.worksheet("timer")
@@ -125,7 +135,6 @@ def hent_timer(medarbejder: str):
         if row[0].strip().lower() == medarbejder.strip().lower()
     ]
 
-# Hent samlet løn for en medarbejder
 @app.get("/løn/{medarbejder}")
 def hent_løn(medarbejder: str):
     ws = sheet.worksheet("løn")
@@ -139,7 +148,6 @@ def hent_løn(medarbejder: str):
                 continue
     return {"medarbejder": medarbejder, "samlet_løn": total}
 
-# Hent opgaver efter status (aktiv/færdig)
 @app.get("/opgaver/{medarbejder}/status/{status}")
 def hent_opgaver_efter_status(medarbejder: str, status: str):
     ws = sheet.worksheet("opgaver")
